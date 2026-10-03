@@ -11,6 +11,8 @@ from app.models.user import User
 def test_unauthenticated_request_rejected(client: TestClient):
     response = client.get("/api/v1/organizations/")
     assert response.status_code == 401
+    data = response.json()
+    assert "error" in data
 
 
 def test_permission_enforcement_forbidden(client: TestClient, responder_token: str):
@@ -26,7 +28,9 @@ def test_permission_enforcement_forbidden(client: TestClient, responder_token: s
         headers={"Authorization": f"Bearer {responder_token}"},
     )
     assert response.status_code == 403
-    assert "Insufficient privileges" in response.json()["detail"]
+    data = response.json()
+    assert "error" in data
+    assert "Insufficient privileges" in data["error"]["message"]
 
 
 def test_superadmin_full_access(client: TestClient, superadmin_token: str):
@@ -65,6 +69,7 @@ def test_user_role_assignment_and_privilege_escalation(
         headers={"Authorization": f"Bearer {responder_token}"},
     )
     assert res_forbidden.status_code == 403
+    assert "error" in res_forbidden.json()
 
     # Superadmin assigns ORG_ADMIN role to responder
     assign_res = client.post(

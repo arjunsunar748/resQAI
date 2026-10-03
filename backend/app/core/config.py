@@ -3,9 +3,8 @@ Configuration management using Pydantic Settings.
 Enforces zero hardcoded credentials and rigorous validation across environments.
 """
 from typing import List, Optional, Union
-from pydantic import AnyHttpUrl, Field, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import os
 
 
 class Settings(BaseSettings):
@@ -14,12 +13,18 @@ class Settings(BaseSettings):
     APP_NAME: str = Field(default="ResQ AI Command Center")
     DEBUG: bool = Field(default=False)
     API_V1_STR: str = Field(default="/api/v1")
+    LOG_LEVEL: str = Field(default="INFO")
 
-    # Security & Cryptography
-    SECRET_KEY: str = Field(
+    # Cryptography & Security Secrets
+    JWT_SECRET: str = Field(
         default="e83a7c64d852be994e63459c0490dae6b4d326f5820468f763bf45d376ce5928",
         min_length=32,
         description="Cryptographic key for signing JWTs and HMAC checksums"
+    )
+    JWT_REFRESH_SECRET: str = Field(
+        default="7b9f8e7c6b5a4d3e2f1029384756abcdef7b9f8e7c6b5a4d3e2f1029384756abcdef",
+        min_length=32,
+        description="Cryptographic key for signing refresh tokens"
     )
     ALGORITHM: str = Field(default="HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30)
@@ -51,13 +56,18 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = Field(default=120)
     AUTH_RATE_LIMIT_PER_MINUTE: int = Field(default=10)
 
-    # AI Configuration
+    # AI Configuration (Abstraction Layer)
     AI_PROVIDER: str = Field(default="ollama", description="ollama | openai | anthropic | gemini")
-    OLLAMA_BASE_URL: str = Field(default="http://localhost:11434")
-    OLLAMA_MODEL: str = Field(default="llama3:8b")
+    AI_BASE_URL: str = Field(default="http://localhost:11434")
+    AI_MODEL: str = Field(default="llama3:8b")
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
+
+    # Map Provider Abstraction
+    MAP_PROVIDER: str = Field(default="osm")
+    MAP_TILE_URL: str = Field(default="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png")
+    MAP_ATTRIBUTION: str = Field(default="&copy; OpenStreetMap contributors")
 
     # Localization (Nepal Defaults)
     DEFAULT_COUNTRY_CODE: str = Field(default="NPL")
@@ -65,6 +75,11 @@ class Settings(BaseSettings):
     DEFAULT_LONGITUDE: float = Field(default=85.3240)
     DEFAULT_MAP_ZOOM: int = Field(default=8)
     SUPPORTED_LOCALES: List[str] = Field(default=["en", "ne"])
+
+    @property
+    def SECRET_KEY(self) -> str:
+        """Alias for backward compatibility."""
+        return self.JWT_SECRET
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -81,11 +96,11 @@ class Settings(BaseSettings):
             return v
         raise ValueError(v)
 
-    @field_validator("SECRET_KEY")
+    @field_validator("JWT_SECRET")
     @classmethod
-    def validate_secret_key_strength(cls, v: str, info) -> str:
+    def validate_jwt_secret_strength(cls, v: str) -> str:
         if len(v) < 32:
-            raise ValueError("SECRET_KEY must be at least 32 characters in length.")
+            raise ValueError("JWT_SECRET must be at least 32 characters in length.")
         return v
 
     model_config = SettingsConfigDict(

@@ -26,7 +26,9 @@ def test_login_invalid_password(client: TestClient, superadmin_user: User):
         json={"email": superadmin_user.email, "password": "IncorrectPassword"},
     )
     assert response.status_code == 401
-    assert "Incorrect email or password" in response.json()["detail"]
+    data = response.json()
+    assert "error" in data
+    assert "Incorrect email or password" in data["error"]["message"]
 
 
 def test_refresh_token_rotation(client: TestClient, superadmin_user: User):
@@ -54,7 +56,9 @@ def test_refresh_token_rotation(client: TestClient, superadmin_user: User):
         json={"refresh_token": refresh_token},
     )
     assert replay_res.status_code == 401
-    assert "revoked" in replay_res.json()["detail"].lower()
+    data = replay_res.json()
+    assert "error" in data
+    assert "revoked" in data["error"]["message"].lower()
 
 
 def test_logout_and_revocation(client: TestClient, superadmin_user: User):
@@ -77,7 +81,9 @@ def test_logout_and_revocation(client: TestClient, superadmin_user: User):
     # Subsequent access with same token must now be rejected
     me_after_res = client.get("/api/v1/auth/me", headers=auth_header)
     assert me_after_res.status_code == 401
-    assert "terminated" in me_after_res.json()["detail"].lower()
+    data = me_after_res.json()
+    assert "error" in data
+    assert "terminated" in data["error"]["message"].lower()
 
 
 def test_get_me_profile(client: TestClient, superadmin_token: str, superadmin_user: User):

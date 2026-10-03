@@ -3,15 +3,16 @@ RESQ AGENT - AI-Powered Disaster Response & Coordination Platform
 Main FastAPI Application Entrypoint.
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from app.api.v1.api import api_router
+from app.api.v1.health import router as health_router
 from app.core.config import settings
 from app.core.logging import logger, setup_logging
 from app.core.middleware import RequestCorrelationMiddleware, SecurityHeadersMiddleware
 from app.db.session import SessionLocal, check_db_connection
+from app.middleware.error_handler import register_exception_handlers
 from app.services.user_service import user_service
 
 
@@ -54,13 +55,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 1. Security Headers Middleware
+# 1. Centralized Exception Handlers (Standard Error Envelope)
+register_exception_handlers(app)
+
+# 2. Security Headers Middleware
 app.add_middleware(SecurityHeadersMiddleware)
 
-# 2. Request Correlation & Tracing Middleware
+# 3. Request Correlation & Tracing Middleware
 app.add_middleware(RequestCorrelationMiddleware)
 
-# 3. CORS Middleware
+# 4. CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -70,23 +74,7 @@ app.add_middleware(
     expose_headers=["X-Correlation-ID", "X-Process-Time"],
 )
 
-
-# Global Exception Handler: Sanitize uncaught errors to prevent sensitive internal leakage
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    correlation_id = getattr(request.state, "correlation_id", "unknown")
-    logger.error(f"Unhandled system error [Correlation ID: {correlation_id}]: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "success": False,
-            "message": "An internal server error occurred. Please contact the system administrator.",
-            "correlation_id": correlation_id,
-        },
-    )
-
-
-# Root endpoints
+# Root service discovery
 @app.get("/")
 def root():
     return {
@@ -96,11 +84,8 @@ def root():
         "api_v1": settings.API_V1_STR,
     }
 
+# Mount health routes directly at root (/health, /health/live, /health/ready)
+app.include_router(health_router)
 
-@app.get("/health")
-def root_health():
-    return {"status": "online", "app": settings.APP_NAME}
-
-
-# Mount API v1 router
+# Mount API v1 router (/api/v1/...)
 app.include_router(api_router, prefix=settings.API_V1_STR)

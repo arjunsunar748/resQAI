@@ -41,7 +41,9 @@ def test_create_organization_invalid_admin_level(client: TestClient, superadmin_
         headers={"Authorization": f"Bearer {superadmin_token}"},
     )
     assert response.status_code == 400
-    assert "Invalid admin_level" in response.json()["detail"]
+    data = response.json()
+    assert "error" in data
+    assert "Invalid admin_level" in data["error"]["message"]
 
 
 def test_duplicate_organization_code_rejected(client: TestClient, superadmin_token: str):
@@ -63,7 +65,9 @@ def test_duplicate_organization_code_rejected(client: TestClient, superadmin_tok
         headers={"Authorization": f"Bearer {superadmin_token}"},
     )
     assert res2.status_code == 400
-    assert "already exists" in res2.json()["detail"]
+    data = res2.json()
+    assert "error" in data
+    assert "already exists" in data["error"]["message"]
 
 
 def test_list_and_filter_organizations(client: TestClient, superadmin_token: str):
