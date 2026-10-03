@@ -1,0 +1,88 @@
+# ==============================================================================
+# RESQ AGENT - Multi-Container Development & Deployment Environment
+# ==============================================================================
+services:
+  # 1. Spatial Relational Database with PostGIS
+  postgis:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: resq-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-resq_ai_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-test123}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-resq_ai_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - resq-network
+
+  # 2. Redis In-Memory Cache, Rate Limiting & Pub/Sub
+  redis:
+    image: redis:7-alpine
+    container_name: resq-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - resq-network
+
+  # 3. Local Offline AI Engine (Ollama)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: resq-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollamadata:/root/.ollama
+    networks:
+      - resq-network
+
+  # 4. Backend Command Center API (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: resq-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-test123}@postgis:5432/${POSTGRES_DB:-resq_ai_db}
+      REDIS_URL: redis://redis:6379/0
+      OLLAMA_BASE_URL: http://ollama:11434
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - resq-network
+
+networks:
+  resq-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  ollamadata:
+    driver: local
